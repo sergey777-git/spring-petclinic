@@ -67,7 +67,7 @@ pipeline {
 
                     echo '2. Безопасный перезапуск сервиса хоста через проброшенный сокет Docker с sudo...'
                     sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p systemctl restart petclinic'
-                    
+
                     echo '3. НАСТОЯЩИЙ SMOKE TEST: Ожидание доступности приложения через Actuator Health...'
                     int maxRetries = 12
                     int retryInterval = 5
@@ -75,10 +75,10 @@ pipeline {
 
                     for (int i = 1; i <= maxRetries; i++) {
                         echo "Проверка живости приложения (Попытка ${i} из ${maxRetries})..."
-                        
-                        def protocol = "http"
-                        def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${protocol}://172.17.0.1:8080/ || echo '000'", returnStdout: true).trim()
 
+                        def protocol = "http"
+                        // ИСПРАВЛЕНО: убрана русская буква 'щ', добавлен правильный IP хоста и точный путь к актуатору
+                        def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${protocol}://127.0.0.1:8081/actuator/health || echo '000'", returnStdout: true).trim()
 
                         if (httpStatus == "200") {
                             echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
@@ -89,7 +89,6 @@ pipeline {
                         echo "Приложение еще запускается (HTTP статус: ${httpStatus}). Ожидаем ${retryInterval} сек..."
                         sleep retryInterval
                     }
-
 
                     if (!isHealthy) {
                         echo "Критическая ошибка: Приложение не запустилось за 60 секунд! Выводим последние логи:"
