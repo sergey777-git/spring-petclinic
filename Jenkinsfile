@@ -2,10 +2,8 @@ pipeline {
     agent any
 
     environment {
-        // Безопасно подтягиваем секрет из Jenkins по его ID
         DB_PASSWORD = credentials('my-db-password')
-        // Указываем IP хоста. Так как база данных на 172.17.0.1, шлюз Docker-сети хоста находится там же
-        HOST_IP     = '172.17.0.1' 
+        HOST_IP     = '172.17.0.1'
     }
 
     tools {
@@ -71,17 +69,15 @@ pipeline {
                     sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p systemctl restart petclinic'
 
                     echo '3. SMOKE TEST: Ожидание доступности приложения...'
-                    // Даем приложению чуть больше времени на тяжелый запуск Spring Boot (15 попыток по 5 секунд = 75 сек)
                     int maxRetries = 15
                     int retryInterval = 5
                     boolean isHealthy = false
 
                     for (int i = 1; i <= maxRetries; i++) {
-                        echo "Проверка доступности (Попытка ${i} из ${maxRetries})..."
+                        echo "Проверка доступности (Попытка \${i} из \${maxRetries})..."
 
-                        // ИСПРАВЛЕНО: Запросы идут на IP хоста (HOST_IP), а не на локальный localhost контейнера Jenkins
                         def httpStatus = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://${env.HOST_IP}:8081/actuator/health || echo '000'", 
+                            script: "curl -s -o /dev/null -w '%{http_code}' http://\${env.HOST_IP}:8081/actuator/health || echo '000'",
                             returnStdout: true
                         ).trim()
 
@@ -91,18 +87,17 @@ pipeline {
                             break
                         }
 
-                        echo "Приложение еще запускается (HTTP статус: ${httpStatus}). Ожидаем ${retryInterval} сек..."
+                        echo "Приложение еще запускается (HTTP статус: \${httpStatus}). Ожидаем \${retryInterval} сек..."
                         sleep retryInterval
                     }
 
                     if (!isHealthy) {
                         echo "Критическая ошибка: Приложение не ответило за отведенное время. Логи из systemd:"
                         sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p journalctl -u petclinic.service -n 50 --no-pager'
-                        error "Деплой завершился провалом: веб-приложение мертво или недоступно по адресу http://${env.HOST_IP}:8081/"
+                        error "Деплой завершился провалом: веб-приложение мертво или недоступно по адресу http://\${env.HOST_IP}:8081/"
                     }
                 }
             }
         }
     }
 }
-
