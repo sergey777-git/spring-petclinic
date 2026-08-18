@@ -4,6 +4,8 @@ pipeline {
     environment {
         // Безопасно подтягиваем секрет из Jenkins по его ID
         DB_PASSWORD = credentials('my-db-password')
+        // Указываем IP хоста. Так как база данных на 172.17.0.1, шлюз Docker-сети хоста находится там же
+        HOST_IP     = '172.17.0.1' 
     }
 
     tools {
@@ -36,8 +38,7 @@ pipeline {
             }
             steps {
                 echo 'Сборка проекта и выполнение тестов через Maven...'
-                // Передаем безопасный пароль в переменные сборки Maven, если тестам нужна БД
-                sh "./mvnw clean package -Dspring.datasource.password=${DB_PASSWORD}"
+                sh "./mvnw clean package -Dspring.datasource.password=${DB_PASSWORD} -DskipTests=false"
             }
             post {
                 always {
@@ -58,27 +59,31 @@ pipeline {
             steps {
                 echo 'Развертывание приложения через systemd хоста...'
                 script {
-                    if (!fileExists('target/spring-petclinic-4.0.0-SNAPSHOT.jar')) {
-                        error "Критическая ошибка: Файл target/spring-petclinic-4.0.0-SNAPSHOT.jar не найден!"
+                    def jarPath = 'target/spring-petclinic-4.0.0-SNAPSHOT.jar'
+                    if (!fileExists(jarPath)) {
+                        error "Критическая ошибка: Файл ${jarPath} не найден!"
                     }
 
-                    echo '1. Копирование нового артефакта в выделенную директорию /opt/petclinic...'
+                    echo '1. Копирование нового артефакта в директорию /opt/petclinic...'
                     sh 'sudo cp target/spring-petclinic-4.0.0-SNAPSHOT.jar /opt/petclinic/petclinic.jar'
 
-                    echo '2. Безопасный перезапуск сервиса хоста через проброшенный сокет Docker с sudo...'
+                    echo '2. Перезапуск systemd сервиса на хосте...'
                     sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p systemctl restart petclinic'
 
-                    echo '3. НАСТОЯЩИЙ SMOKE TEST: Ожидание доступности приложения через Actuator Health...'
-                    int maxRetries = 12
+                    echo '3. SMOKE TEST: Ожидание доступности приложения...'
+                    // Даем приложению чуть больше времени на тяжелый запуск Spring Boot (15 попыток по 5 секунд = 75 сек)
+                    int maxRetries = 15
                     int retryInterval = 5
                     boolean isHealthy = false
 
                     for (int i = 1; i <= maxRetries; i++) {
-                        echo "Проверка живости приложения (Попытка ${i} из ${maxRetries})..."
+                        echo "Проверка доступности (Попытка ${i} из ${maxRetries})..."
 
-                        def protocol = "http"
-                        // ИСПРАВЛЕНО: убрана русская буква 'щ', добавлен правильный IP хоста и точный путь к актуатору
-                        def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${protocol}://127.0.0.1:8081/actuator/health || echo '000'", returnStdout: true).trim()
+                        // ИСПРАВЛЕНО: Запросы идут на IP хоста (HOST_IP), а не на локальный localhost контейнера Jenkins
+                        def httpStatus = sh(
+                            script: "curl -s -o /dev/null -w '%{http_code}' http://${env.HOST_IP}:8081/actuator/health || echo '000'", 
+                            returnStdout: true
+                        ).trim()
 
                         if (httpStatus == "200") {
                             echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
@@ -91,9 +96,9 @@ pipeline {
                     }
 
                     if (!isHealthy) {
-                        echo "Критическая ошибка: Приложение не запустилось за 60 секунд! Выводим последние логи:"
-                        sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p journalctl -u petclinic.service -n 30 --no-pager'
-                        error "Деплой завершился провалом: веб-приложение мертво или недоступно."
+                        echo "Критическая ошибка: Приложение не ответило за отведенное время. Логи из systemd:"
+                        sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p journalctl -u petclinic.service -n 50 --no-pager'
+                        error "Деплой завершился провалом: веб-приложение мертво или недоступно по адресу http://${env.HOST_IP}:8081/"
                     }
                 }
             }
