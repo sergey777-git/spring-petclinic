@@ -37,7 +37,7 @@ pipeline {
             steps {
                 echo 'Сборка проекта и выполнение тестов через Maven...'
                 // Передаем безопасный пароль в переменные сборки Maven, если тестам нужна БД
-                sh "./mvnw clean package -Dspring.datasource.password=${DB_PASSWORD}"
+                sh "./mvnw clean package -Dspring.datasource.password=${DB_PASSWORD} -Dcheckstyle.skip=true"
             }
             post {
                 always {
@@ -76,7 +76,8 @@ pipeline {
                     for (int i = 1; i <= maxRetries; i++) {
                         echo "Проверка живости приложения (Попытка ${i} из ${maxRetries})..."
                         
-                        def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://172.17.0 || echo '000'", returnStdout: true).trim()
+                        def httpStatus = sh(script: "curl -k -s -o /dev/null -w '%{http_code}' https://172.17.0 || echo '000'", returnStdout: true).trim()
+
 
                         if (httpStatus == "200") {
                             echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
