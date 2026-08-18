@@ -1,0 +1,15 @@
+[Unit]
+Description=Spring PetClinic Application
+After=network.target postgresql.service
+
+[Service]
+User=sergey777
+WorkingDirectory=/opt/petclinic
+Environment="SPRING_DATASOURCE_PASSWORD=PLACEHOLDER_FOR_SECURITY"
+ExecStart=/usr/bin/java -jar /opt/petclinic/petclinic.jar --server.port=8081
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
