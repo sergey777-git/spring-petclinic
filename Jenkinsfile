@@ -88,6 +88,7 @@ pipeline {
                         sleep retryInterval
                     }
 
+
                     if (!isHealthy) {
                         echo "Критическая ошибка: Приложение не запустилось за 60 секунд! Выводим последние логи:"
                         sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p journalctl -u petclinic.service -n 30 --no-pager'
