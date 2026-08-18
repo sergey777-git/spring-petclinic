@@ -50,7 +50,7 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+                stage('Deploy') {
             when {
                 expression { params.RUN_DEPLOY }
             }
@@ -73,11 +73,15 @@ pipeline {
                     int retryInterval = 5
                     boolean isHealthy = false
 
-                    for (int i = 1; i <= maxRetries; i++) {
-                        echo "Проверка доступности (Попытка \${i} из \${maxRetries})..."
+                    // Вытаскиваем IP из env в чистую строку Groovy, чтобы не использовать кавычки внутри sh
+                    def hostIp = env.HOST_IP 
 
+                    for (int i = 1; i <= maxRetries; i++) {
+                        echo "Проверка доступности (Попытка ${i} из ${maxRetries})..."
+
+                        // Используем двойные кавычки Groovy и передаем готовую строку без экранирования знаков баша
                         def httpStatus = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://\${env.HOST_IP}:8081/actuator/health || echo '000'",
+                            script: "curl -s -o /dev/null -w '%{http_code}' http://${hostIp}:8081/actuator/health || echo '000'",
                             returnStdout: true
                         ).trim()
 
@@ -87,17 +91,18 @@ pipeline {
                             break
                         }
 
-                        echo "Приложение еще запускается (HTTP статус: \${httpStatus}). Ожидаем \${retryInterval} сек..."
+                        echo "Приложение еще запускается (HTTP статус: ${httpStatus}). Ожидаем ${retryInterval} сек..."
                         sleep retryInterval
                     }
 
                     if (!isHealthy) {
                         echo "Критическая ошибка: Приложение не ответило за отведенное время. Логи из systemd:"
                         sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p journalctl -u petclinic.service -n 50 --no-pager'
-                        error "Деплой завершился провалом: веб-приложение мертво или недоступно по адресу http://\${env.HOST_IP}:8081/"
+                        error "Деплой завершился провалом: веб-приложение мертво или недоступно по адресу http://${hostIp}:8081/"
                     }
                 }
             }
         }
+            
     }
 }
