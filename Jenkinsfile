@@ -2,7 +2,9 @@ pipeline {
     agent any
 
     environment {
+        // Безопасно подтягиваем секрет из Jenkins по его ID
         DB_PASSWORD = credentials('my-db-password')
+        // Указываем IP хоста. Так как база данных на 172.17.0.1, шлюз Docker-сети хоста находится там же
         HOST_IP     = '172.17.0.1'
     }
 
@@ -50,7 +52,7 @@ pipeline {
             }
         }
 
-                stage('Deploy') {
+        stage('Deploy') {
             when {
                 expression { params.RUN_DEPLOY }
             }
@@ -72,16 +74,14 @@ pipeline {
                     int maxRetries = 15
                     int retryInterval = 5
                     boolean isHealthy = false
-
-                    // Вытаскиваем IP из env в чистую строку Groovy, чтобы не использовать кавычки внутри sh
                     def hostIp = env.HOST_IP 
 
                     for (int i = 1; i <= maxRetries; i++) {
                         echo "Проверка доступности (Попытка ${i} из ${maxRetries})..."
 
-                        // Используем двойные кавычки Groovy и передаем готовую строку без экранирования знаков баша
+                        // ИСПРАВЛЕНО: Чистый curl без лишних эхо, защищенный от падения пайплайна с помощью || true
                         def httpStatus = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://${hostIp}:8081/actuator/health || echo '000'",
+                            script: "curl -s -o /dev/null -w '%{http_code}' http://${hostIp}:8081/actuator/health || true",
                             returnStdout: true
                         ).trim()
 
@@ -103,6 +103,5 @@ pipeline {
                 }
             }
         }
-            
     }
 }
