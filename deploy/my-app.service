@@ -1,0 +1,14 @@
+[Unit]
+Description=Spring Petclinic Application
+After=network.target
+
+[Service]
+User=jenkins
+WorkingDirectory=/home/jenkins/app
+ExecStart=/usr/bin/java -jar spring-petclinic.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
