@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    environment {
+        // Безопасно подтягиваем секрет из Jenkins по его ID
+        DB_PASSWORD = credentials('my-db-password')
+    }
+
     tools {
         maven 'M3'
         jdk 'JDK17'
@@ -21,7 +26,7 @@ pipeline {
             steps {
                 echo 'Синхронизация исходного кода из Git-репозитория...'
                 cleanWs()
-                git url: 'https://github.com', branch: 'main'
+                checkout scm
             }
         }
 
@@ -31,7 +36,8 @@ pipeline {
             }
             steps {
                 echo 'Сборка проекта и выполнение тестов через Maven...'
-                sh './mvnw clean package'
+                // Передаем безопасный пароль в переменные сборки Maven, если тестам нужна БД
+                sh "./mvnw clean package -Dspring.datasource.password=${DB_PASSWORD}"
             }
             post {
                 always {
@@ -57,7 +63,7 @@ pipeline {
                     }
 
                     echo '1. Копирование нового артефакта в выделенную директорию /opt/petclinic...'
-                    sh 'cp target/spring-petclinic-4.0.0-SNAPSHOT.jar /opt/petclinic/petclinic.jar'
+                    sh 'sudo cp target/spring-petclinic-4.0.0-SNAPSHOT.jar /opt/petclinic/petclinic.jar'
 
                     echo '2. Безопасный перезапуск сервиса хоста через проброшенный сокет Docker с sudo...'
                     sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p systemctl restart petclinic'
@@ -70,9 +76,7 @@ pipeline {
                     for (int i = 1; i <= maxRetries; i++) {
                         echo "Проверка живости приложения (Попытка ${i} из ${maxRetries})..."
                         
-                      def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://172.17.0.1 || echo '000'", returnStdout: true).trim()
-
-                        ).trim()
+                        def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://172.17.0 || echo '000'", returnStdout: true).trim()
 
                         if (httpStatus == "200") {
                             echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
@@ -94,3 +98,4 @@ pipeline {
         }
     }
 }
+
