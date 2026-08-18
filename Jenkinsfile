@@ -76,7 +76,9 @@ pipeline {
                     for (int i = 1; i <= maxRetries; i++) {
                         echo "Проверка живости приложения (Попытка ${i} из ${maxRetries})..."
                         
-                        def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://172.17.0 || echo '000'", returnStdout: true).trim()
+                        def protocol = "http"
+                        def httpStatus = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${protocol}://172.17.0.1:8080/ || echo '000'", returnStdout: true).trim()
+
 
                         if (httpStatus == "200") {
                             echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
