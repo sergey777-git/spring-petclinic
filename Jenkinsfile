@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         DB_PASSWORD = credentials('my-db-password')
+        REPO_URL    = 'https://github.com'
         HOST_IP     = '172.17.0.1'
     }
 
@@ -16,6 +17,11 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '5'))
     }
 
+    // ИСПРАВЛЕНО: Добавлен триггер для автоматического перезапуска джобы при изменениях в GitHub
+    triggers {
+        githubPush()
+    }
+
     parameters {
         booleanParam(name: 'RUN_BUILD_AND_TEST', defaultValue: true, description: 'Запустить сборку проекта и прогон тестов (Build & Test)?')
         booleanParam(name: 'RUN_DEPLOY', defaultValue: true, description: 'Запустить деплой приложения (Deploy)?')
@@ -24,7 +30,13 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "Код успешно получен из SCM. Проверяем текущую ветку и коммит..."
+                echo "Синхронизация исходного кода из ветки main вашего форка: ${env.REPO_URL}..."
+                cleanWs()
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: '*/main']], 
+                    extensions: [], 
+                    userRemoteConfigs: [[url: env.REPO_URL]]
+                ])
                 sh 'git log -1 --oneline'
             }
         }
@@ -82,7 +94,7 @@ pipeline {
                         ).trim()
 
                         if (httpStatus == "200") {
-                            echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
+                            echo "Успех! Приложение полностью инициализировалось and ответило HTTP 200 OK."
                             isHealthy = true
                             break
                         }
