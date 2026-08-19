@@ -1,0 +1,14 @@
+[Unit]
+Description=Spring PetClinic Application
+After=network.target
+
+[Service]
+User=root
+ExecStart=/usr/bin/java -jar /opt/petclinic/petclinic.jar --spring.datasource.password=${DB_PASSWORD}
+SuccessExitStatus=143
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
