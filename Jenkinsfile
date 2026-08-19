@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Безопасно подтягиваем секрет из Jenkins по его ID
         DB_PASSWORD = credentials('my-db-password')
         HOST_IP     = '172.17.0.1'
     }
@@ -26,7 +25,6 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Код успешно получен из SCM. Проверяем текущую ветку и коммит..."
-                // Исправлено согласно п.6: выводим хэш коммита, который Jenkins нативно стянул из форка
                 sh 'git log -1 --oneline'
             }
         }
