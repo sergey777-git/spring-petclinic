@@ -4,9 +4,6 @@ pipeline {
     environment {
         // Безопасно подтягиваем секрет из Jenkins по его ID
         DB_PASSWORD = credentials('my-db-password')
-        // URL вашего форка на GitHub
-        REPO_URL    = 'https://github.com'
-        // Указываем IP хоста для Smoke Test
         HOST_IP     = '172.17.0.1'
     }
 
@@ -28,15 +25,10 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "Синхронизация исходного кода из ветки main вашего форка: ${env.REPO_URL}..."
-                cleanWs()
-                // Пайплайн качает код напрямую из ветки main вашего удаленного форка
-                checkout([$class: 'GitSCM', 
-                    branches: [[name: '*/main']], 
-                    extensions: [], 
-                    userRemoteConfigs: [[url: env.REPO_URL]]
-                ])
-                // Показываем в консоли Jenkins, какой конкретно коммит был собран
+                echo "Код успешно получен из SCM. Проверяем текущую ветку и коммит..."
+                
+                // ИСПРАВЛЕНО: Вместо повторного клонирования, мы просто выводим информацию 
+                // о коммите, который Jenkins уже нативно скачал из вашего форка.
                 sh 'git log -1 --oneline'
             }
         }
