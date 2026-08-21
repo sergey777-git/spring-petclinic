@@ -2,9 +2,8 @@ pipeline {
     agent any
 
     environment {
-        // Безопасно подтягиваем секрет из Jenkins по его ID (Пункт 3)
-        DB_PASSWORD = credentials('my-db-password')
-        HOST_IP     = '172.17.0.1'
+        // IP-адрес целевого сервера, куда идет деплой
+        TARGET_HOST = '100.104.174.26'
     }
 
     tools {
@@ -29,8 +28,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "Код успешно получен из SCM форка ветки main."
-                // Пункт 6: Нативный вывод хэша коммита в консоль билда
+                echo "Код успешно получен из SCM ветки main."
                 sh 'git log -1 --oneline'
             }
         }
@@ -41,7 +39,8 @@ pipeline {
             }
             steps {
                 echo 'Сборка проекта и выполнение тестов через Maven...'
-                sh "./mvnw clean package -Dspring.datasource.password=${DB_PASSWORD} -DskipTests=false"
+                // Мелочь исправлена: одинарные кавычки, пароль боевой базы убран из тестов
+                sh './mvnw clean package'
             }
             post {
                 always {
@@ -60,47 +59,62 @@ pipeline {
                 expression { params.RUN_DEPLOY }
             }
             steps {
-                echo 'Развертывание приложения через systemd хоста...'
-                script {
-                    def jarPath = 'target/spring-petclinic-4.0.0-SNAPSHOT.jar'
-                    if (!fileExists(jarPath)) {
-                        error "Критическая ошибка: Файл ${jarPath} не найден!"
-                    }
+                echo 'Развертывание приложения через systemd на целевом хосте...'
+                
+                // Используем SSH-ключ, хранящийся в Jenkins, для безопасного подключения
+                sshagent(['target-server-ssh-key']) {
+                    script {
+                        // Поиск собранного jar-файла по маске (исправлен хардкод версии)
+                        def jarFiles = findFiles(glob: 'target/*.jar')
+                        if (jarFiles.length == 0) {
+                            error "Критическая ошибка: Артефакт .jar в папке target/ не найден!"
+                        }
+                        def localJarPath = jarFiles[0].path
+                        echo "Найден артефакт для деплоя: ${localJarPath}"
 
-                    echo '1. Копирование нового артефакта в директорию /opt/petclinic...'
-                    sh 'sudo cp target/spring-petclinic-4.0.0-SNAPSHOT.jar /opt/petclinic/petclinic.jar'
+                        echo '1. Подготовка директорий на целевом сервере...'
+                        sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic'"
 
-                    echo '2. Перезапуск systemd сервиса на хосте...'
-                    sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p systemctl restart petclinic'
+                        echo '2. Копирование нового артефакта на сервер...'
+                        sh "scp -o StrictHostKeyChecking=no ${localJarPath} jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar"
 
-                    echo '3. SMOKE TEST: Ожидание доступности приложения...'
-                    int maxRetries = 15
-                    int retryInterval = 5
-                    boolean isHealthy = false
-                    def hostIp = env.HOST_IP 
+                        echo '3. Копирование и синхронизация systemd юнит-файла из репозитория...'
+                        sh "scp -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service"
+                        sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mv /tmp/petclinic.service /etc/systemd/system/petclinic.service'"
 
-                    for (int i = 1; i <= maxRetries; i++) {
-                        echo "Проверка доступности (Попытка ${i} из ${maxRetries})..."
+                        echo '4. Перезапуск systemd сервиса через ограниченные права sudo...'
+                        sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo systemctl daemon-reload && sudo systemctl restart petclinic.service'"
 
-                        def httpStatus = sh(
-                            script: "curl -s -o /dev/null -w '%{http_code}' http://${hostIp}:8081/actuator/health || true",
-                            returnStdout: true
-                        ).trim()
+                        echo '5. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
+                        int maxRetries = 15
+                        int retryInterval = 5
+                        boolean isHealthy = false
 
-                        if (httpStatus == "200") {
-                            echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
-                            isHealthy = true
-                            break
+                        for (int i = 1; i <= maxRetries; i++) {
+                            echo "Проверка доступности (Попытка ${i} из ${maxRetries})..."
+
+                            // Запрос идет на порт 8081, как указано в требованиях к новой службе
+                            def httpStatus = sh(
+                                script: "curl -s -o /dev/null -w '%{http_code}' http://${TARGET_HOST}:8081/actuator/health || true",
+                                returnStdout: true
+                            ).trim()
+
+                            if (httpStatus == "200") {
+                                echo "Успех! Приложение полностью инициализировалось и ответило HTTP 200 OK."
+                                isHealthy = true
+                                break
+                            }
+
+                            echo "Приложение еще запускается (HTTP статус: ${httpStatus}). Ожидаем ${retryInterval} сек..."
+                            sleep retryInterval
                         }
 
-                        echo "Приложение еще запускается (HTTP статус: ${httpStatus}). Ожидаем ${retryInterval} сек..."
-                        sleep retryInterval
-                    }
-
-                    if (!isHealthy) {
-                        echo "Критическая ошибка: Приложение не ответило за отведенное время. Логи из systemd:"
-                        sh 'sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p journalctl -u petclinic.service -n 50 --no-pager'
-                        error "Деплой завершился провалом: веб-приложение мертво или недоступно по адресу http://${hostIp}:8081/"
+                        if (!isHealthy) {
+                            echo "Критическая ошибка: Приложение не ответило. Выгружаем логи из systemd для анализа:"
+                            // Безопасный сбор логов без nsenter
+                            sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo journalctl -u petclinic.service -n 50 --no-pager'"
+                            error "Деплой завершился провалом: веб-приложение недоступно по адресу http://${TARGET_HOST}:8081/"
+                        }
                     }
                 }
             }

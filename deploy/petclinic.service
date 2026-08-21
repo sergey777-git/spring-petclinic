@@ -1,14 +1,14 @@
 [Unit]
-Description=Spring PetClinic Application
+Description=Spring Petclinic Application
 After=network.target
 
 [Service]
-User=root
-ExecStart=/usr/bin/java -jar /opt/petclinic/petclinic.jar --spring.datasource.password=${DB_PASSWORD}
-SuccessExitStatus=143
-TimeoutStopSec=10
-Restart=on-failure
-RestartSec=5
+Type=simple
+User=petclinic
+Group=petclinic
+EnvironmentFile=/etc/petclinic/petclinic.env
+ExecStart=/usr/bin/java -jar /opt/petclinic/petclinic.jar --server.port=8081 --spring.profiles.active=postgres
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
