@@ -72,14 +72,15 @@ pipeline {
                             scp -i ${SSH_KEY} -o StrictHostKeyChecking=no $LOCAL_JAR jenkins@${TARGET_HOST}:/home/jenkins/petclinic.jar
                         '''
 
-                        echo '2. Копирование systemd юнит-файла во временную папку хоста...'
-                        sh "scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service"
+                        echo '2. Копирование systemd юнит-файла прямо в домашнюю папку хоста...'
+                        sh 'scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/home/jenkins/petclinic.service'
                         
-                        echo '3. Перенос юнит-файла в системную директорию...'
-                        sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mv /tmp/petclinic.service /etc/systemd/system/petclinic.service'"
+                        echo '3. Привязка юнита к systemd (используем только разрешенный systemctl)...'
+                        // Команда link заставит systemd зарегистрировать юнит прямо из домашней папки без sudo mv
+                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl link /home/jenkins/petclinic.service"'
 
                         echo '4. Перезапуск systemd сервиса...'
-                        sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo systemctl daemon-reload && sudo systemctl restart petclinic.service'"
+                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl daemon-reload && sudo /usr/bin/systemctl restart petclinic.service"'
 
                         echo '5. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
                         int maxRetries = 15
@@ -106,7 +107,7 @@ pipeline {
 
                         if (!isHealthy) {
                             echo "Критическая ошибка: Приложение не ответило. Выгружаем логи из systemd для анализа:"
-                            sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo journalctl -u petclinic.service -n 50 --no-pager"'
+                            sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/journalctl -u petclinic.service -n 50 --no-pager"'
                             error "Деплой завершился провалом: веб-приложение недоступно по адресу http://${TARGET_HOST}:8081/"
                         }
                     }
