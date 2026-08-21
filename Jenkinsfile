@@ -39,7 +39,6 @@ pipeline {
             }
             steps {
                 echo 'Сборка проекта и выполнение тестов через Maven...'
-                // Мелочь исправлена: одинарные кавычки, пароль боевой базы убран из тестов
                 sh './mvnw clean package'
             }
             post {
@@ -61,22 +60,21 @@ pipeline {
             steps {
                 echo 'Развертывание приложения через systemd на целевом хосте...'
                 
-                // Используем SSH-ключ, хранящийся в Jenkins, для безопасного подключения
                 sshagent(['target-server-ssh-key']) {
                     script {
-                        // Поиск собранного jar-файла по маске (исправлен хардкод версии)
-                        def jarFiles = findFiles(glob: 'target/*.jar')
-                        if (jarFiles.length == 0) {
-                            error "Критическая ошибка: Артефакт .jar в папке target/ не найден!"
-                        }
-                        def localJarPath = jarFiles[0].path
-                        echo "Найден артефакт для деплоя: ${localJarPath}"
-
                         echo '1. Подготовка директорий на целевом сервере...'
                         sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic'"
 
-                        echo '2. Копирование нового артефакта на сервер...'
-                        sh "scp -o StrictHostKeyChecking=no ${localJarPath} jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar"
+                        echo '2. Копирование нового артефакта на сервер (находим jar силами Bash)...'
+                        sh """
+                            LOCAL_JAR=\$(ls target/*.jar | head -n 1)
+                            if [ -z "\$LOCAL_JAR" ]; then
+                                echo "Критическая ошибка: Артефакт .jar в папке target/ не найден!"
+                                exit 1
+                            fi
+                            echo "Найден артефакт: \$LOCAL_JAR"
+                            scp -o StrictHostKeyChecking=no \$LOCAL_JAR jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar
+                        """
 
                         echo '3. Копирование и синхронизация systemd юнит-файла из репозитория...'
                         sh "scp -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service"
@@ -93,7 +91,6 @@ pipeline {
                         for (int i = 1; i <= maxRetries; i++) {
                             echo "Проверка доступности (Попытка ${i} из ${maxRetries})..."
 
-                            // Запрос идет на порт 8081, как указано в требованиях к новой службе
                             def httpStatus = sh(
                                 script: "curl -s -o /dev/null -w '%{http_code}' http://${TARGET_HOST}:8081/actuator/health || true",
                                 returnStdout: true
@@ -111,7 +108,6 @@ pipeline {
 
                         if (!isHealthy) {
                             echo "Критическая ошибка: Приложение не ответило. Выгружаем логи из systemd для анализа:"
-                            // Безопасный сбор логов без nsenter
                             sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo journalctl -u petclinic.service -n 50 --no-pager'"
                             error "Деплой завершился провалом: веб-приложение недоступно по адресу http://${TARGET_HOST}:8081/"
                         }
@@ -119,5 +115,5 @@ pipeline {
                 }
             }
         }
-    }
-}
+    } 
+} 
