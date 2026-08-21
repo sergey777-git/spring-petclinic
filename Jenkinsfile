@@ -83,11 +83,9 @@ pipeline {
                             "
                         '''
 
-                        // Внимание: шаг daemon-reload удален, так как сам файл юнита на сервере не меняется.
-                        // Мы меняем только EnvironmentFile, параметры которого автоматически перечитываются при restart.
-
-                        echo '3. Перезапуск systemd сервиса (Строго ОДНА разрешенная команда в sudoers)...'
-                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl restart petclinic.service"'
+                        echo '3. Перезапуск systemd сервиса (Точная короткая команда под правила sudoers)...'
+                        // Строго убрали полный путь и расширение .service для совпадения символ в символ
+                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo systemctl restart petclinic"'
 
                         echo '4. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
                         int maxRetries = 15
@@ -114,7 +112,7 @@ pipeline {
 
                         if (!isHealthy) {
                             echo "Критическая ошибка: Приложение не ответило. Выгружаем логи из systemd для анализа:"
-                            sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/journalctl -u petclinic.service -n 50 --no-pager"'
+                            sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo journalctl -u petclinic -n 50 --no-pager"'
                             error "Деплой завершился провалом: веб-приложение недоступно по адресу http://${TARGET_HOST}:8081/"
                         }
                     }
