@@ -83,13 +83,13 @@ pipeline {
                             "
                         '''
 
-                        echo '3. Обновление конфигурации systemd (разрешено в sudoers)...'
-                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl daemon-reload"'
+                        // Внимание: шаг daemon-reload удален, так как сам файл юнита на сервере не меняется.
+                        // Мы меняем только EnvironmentFile, параметры которого автоматически перечитываются при restart.
 
-                        echo '4. Перезапуск systemd сервиса (разрешено в sudoers)...'
+                        echo '3. Перезапуск systemd сервиса (Строго ОДНА разрешенная команда в sudoers)...'
                         sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl restart petclinic.service"'
 
-                        echo '5. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
+                        echo '4. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
                         int maxRetries = 15
                         int retryInterval = 5
                         boolean isHealthy = false
