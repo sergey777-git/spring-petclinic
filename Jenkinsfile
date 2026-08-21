@@ -39,7 +39,6 @@ pipeline {
             }
             steps {
                 echo 'Сборка проекта и выполнение тестов через Maven...'
-                // Мелочь исправлена: одинарные кавычки, пароль боевой базы убран из тестов
                 sh './mvnw clean package'
             }
             post {
@@ -62,21 +61,21 @@ pipeline {
                 echo 'Развертывание приложения через systemd на целевом хосте...'
                 
                 script {
-                    echo '--- ШАГ ИНИЦИАЛИЗАЦИИ КЛЮЧЕЙ (Выполняется один раз силами Docker) ---'
-                    // Этот шаг легитимно пропишет публичный ключ самого Jenkins в authorized_keys хоста
+                    echo '--- ИНИЦИАЛИЗАЦИЯ ИНФРАСТРУКТУРЫ: Прописка ключа на хосте ---'
+                    // Этот шаг легитимно пропишет твой новый публичный ключ в authorized_keys хоста
                     sh '''
                         sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p bash -c '
                             mkdir -p /home/jenkins/.ssh
-                            echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCXZN4Oi06TuXnap6W8/Iv9oow4iZbKMPLCz8453jNOLjN4KUd+RJNe34jNWTa3GLaLSRXBOhgOISncM4XvKrDJz7ekx/gq5wVfnzg6WMseiQE9BwT/ZDHZOBtVl7r1IolQ8CjxXeUhpz9X8PawKBrqytWJLJVkugpytvHRyhFID9NMo8AU26jSitxKC9txliSlmECi2UKjjwaslujdlB91AVngFKpDOMxL+sxTal33zQJFFV6HtqsiNYdSOr/LFydSD969/XwnClA51EtMOggwxElJaWHfIwBfV3N0H08Vnb4AIKeDzf+1L3cPm2zpPPnXp31cRRtzwfXF27NX1OVEJPdfJEq0g80TawcpepfEzbvZs2c0QaPVZrv+5psSC7pIPwlvb+SRHCXBipulSFRwYmgxInCg1k/V35GouHuig13T6+oUsfr7itQrIGg7g0nt/LjArhKBE5ryhRpIeG8Jk9szb3PwTFMBbQg8SYYoZ7HjQf6l3952qkOEGVB5OfqbDtql+HNRGxSYog+BhKYM98xedUJTamed52HJYRwJaYGHo+kLx7gm1IgoLLizWFx5ueclYje/VEhwl6dLJbokwl9BoqYeIFjRcClnED4Gq4SwAEO7wKv0VWlgo4GErfKfOAYNkKZKjBkuMl2JWEc7R0zOKTer289h5Ew3lVKEkw== jenkins@f117a900928a" >> /home/jenkins/.ssh/authorized_keys
+                            echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAJoqbvc+2SPYmQvHtdX8cn83pry2Vd1q3V6Lyn9X7O2 jenkins-deploy-key" > /home/jenkins/.ssh/authorized_keys
                             chown -R jenkins:jenkins /home/jenkins/.ssh
                             chmod 700 /home/jenkins/.ssh
                             chmod 600 /home/jenkins/.ssh/authorized_keys
-                            echo "✅ Успех: Публичный ключ Jenkins успешно авторизован на хосте!"
+                            echo "✅ Успех: Новый ключ авторизован на хосте!"
                         '
                     '''
                 }
 
-                // Используем наш глобальный ключ, который мы успешно обновили в Jenkins Credentials
+                // Используем наш глобальный ключ, в который мы сейчас сохраним приватную часть id_deploy
                 withCredentials([sshUserPrivateKey(credentialsId: 'target-server-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
                         echo '1. Подготовка директорий на целевом сервере...'
