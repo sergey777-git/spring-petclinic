@@ -65,8 +65,15 @@ pipeline {
                         echo '1. Подготовка директорий на целевом сервере...'
                         sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic"'
 
-                        echo '2. Копирование нового артефакта на server (находим jar силами Bash)...'
-                        sh 'LOCAL_JAR=$(ls target/*.jar | head -n 1) && if [ -z "$LOCAL_JAR" ]; then echo "Критическая ошибка: Артефакт .jar не найден!"; exit 1; fi && scp -i ${SSH_KEY} -o StrictHostKeyChecking=no $LOCAL_JAR jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar'
+                        echo '2. Копирование нового артефакта на server...'
+                        sh '''
+                            LOCAL_JAR=$(ls target/*.jar | head -n 1)
+                            if [ -z "$LOCAL_JAR" ]; then
+                                echo "Критическая ошибка: Артефакт .jar не найден!"
+                                exit 1
+                            fi
+                            scp -i ${SSH_KEY} -o StrictHostKeyChecking=no $LOCAL_JAR jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar
+                        '''
 
                         echo '3. Копирование и синхронизация systemd юнит-файла из репозитория...'
                         sh 'scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service'
