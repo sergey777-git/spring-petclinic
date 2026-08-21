@@ -60,10 +60,11 @@ pipeline {
             steps {
                 echo 'Развертывание приложения через systemd на целевом хосте...'
                 
-                sshagent(['target-server-ssh-key']) {
+                // Используем стандартный withCredentials вместо sshagent
+                withCredentials([sshUserPrivateKey(credentialsId: 'target-server-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
                         echo '1. Подготовка директорий на целевом сервере...'
-                        sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic'"
+                        sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic'"
 
                         echo '2. Копирование нового артефакта на сервер (находим jar силами Bash)...'
                         sh """
@@ -73,15 +74,15 @@ pipeline {
                                 exit 1
                             fi
                             echo "Найден артефакт: \$LOCAL_JAR"
-                            scp -o StrictHostKeyChecking=no \$LOCAL_JAR jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar
+                            scp -i ${SSH_KEY} -o StrictHostKeyChecking=no \$LOCAL_JAR jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar
                         """
 
                         echo '3. Копирование и синхронизация systemd юнит-файла из репозитория...'
-                        sh "scp -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service"
-                        sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mv /tmp/petclinic.service /etc/systemd/system/petclinic.service'"
+                        sh "scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service"
+                        sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mv /tmp/petclinic.service /etc/systemd/system/petclinic.service'"
 
                         echo '4. Перезапуск systemd сервиса через ограниченные права sudo...'
-                        sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo systemctl daemon-reload && sudo systemctl restart petclinic.service'"
+                        sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo systemctl daemon-reload && sudo systemctl restart petclinic.service'"
 
                         echo '5. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
                         int maxRetries = 15
@@ -108,12 +109,12 @@ pipeline {
 
                         if (!isHealthy) {
                             echo "Критическая ошибка: Приложение не ответило. Выгружаем логи из systemd для анализа:"
-                            sh "ssh -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo journalctl -u petclinic.service -n 50 --no-pager'"
+                            sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo journalctl -u petclinic.service -n 50 --no-pager'"
                             error "Деплой завершился провалом: веб-приложение недоступно по адресу http://${TARGET_HOST}:8081/"
                         }
                     }
                 }
             }
         }
-    } 
-} 
+    } // Конец блока stages
+} // Конец блока pipeline
