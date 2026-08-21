@@ -72,15 +72,22 @@ pipeline {
                             scp -i ${SSH_KEY} -o StrictHostKeyChecking=no $LOCAL_JAR jenkins@${TARGET_HOST}:/home/jenkins/petclinic.jar
                         '''
 
-                        echo '2. Копирование systemd юнит-файла прямо в домашнюю папку хоста...'
-                        sh 'scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/home/jenkins/petclinic.service'
-                        
-                        echo '3. Привязка юнита к systemd (используем только разрешенный systemctl)...'
-                        // Команда link заставит systemd зарегистрировать юнит прямо из домашней папки без sudo mv
-                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl link /home/jenkins/petclinic.service"'
+                        echo '2. Создание и обновление файла переменных окружения (EnvironmentFile)...'
+                        sh '''
+                            ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@100.104.174.26 "
+                                echo 'SERVER_PORT=8081' > /home/jenkins/petclinic.env
+                                echo 'SPRING_PROFILES_ACTIVE=postgres' >> /home/jenkins/petclinic.env
+                                echo 'DB_PASSWORD=настоящий_пароль_из_credentials' >> /home/jenkins/petclinic.env
+                                chmod 600 /home/jenkins/petclinic.env
+                                echo '✅ Файл окружения успешно обновлен!'
+                            "
+                        '''
 
-                        echo '4. Перезапуск systemd сервиса...'
-                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl daemon-reload && sudo /usr/bin/systemctl restart petclinic.service"'
+                        echo '3. Обновление конфигурации systemd (разрешено в sudoers)...'
+                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl daemon-reload"'
+
+                        echo '4. Перезапуск systemd сервиса (разрешено в sudoers)...'
+                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo /usr/bin/systemctl restart petclinic.service"'
 
                         echo '5. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
                         int maxRetries = 15
