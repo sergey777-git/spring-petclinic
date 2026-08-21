@@ -61,7 +61,8 @@ pipeline {
                 echo 'Развертывание приложения через systemd на целевом хосте...'
                 
                 // Используем стандартный withCredentials вместо sshagent
-                withCredentials([sshUserPrivateKey(credentialsId: 'target-server-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'github-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+
                     script {
                         echo '1. Подготовка директорий на целевом сервере...'
                         sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic'"
