@@ -63,6 +63,7 @@ pipeline {
                 withCredentials([sshUserPrivateKey(credentialsId: 'target-server-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
                         echo '1. Подготовка директорий на целевом сервере...'
+                       sh 'cat ~/.ssh/id_ed25519.pub || cat ~/.ssh/id_rsa.pub || echo "Ключ не найден в дефолтной папке"'
                         sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic"'
 
                         echo '2. Копирование нового артефакта на server...'
