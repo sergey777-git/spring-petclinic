@@ -4,10 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=petclinic
-Group=petclinic
-EnvironmentFile=/etc/petclinic/petclinic.env
-ExecStart=/usr/bin/java -jar /opt/petclinic/petclinic.jar --server.port=8081 --spring.profiles.active=postgres
+User=jenkins
+Group=jenkins
+EnvironmentFile=/home/jenkins/petclinic.env
+ExecStart=/usr/bin/java -jar /home/jenkins/petclinic.jar \
+  --server.port=8081 \
+  --spring.profiles.active=postgres
 Restart=always
 
 [Install]

@@ -60,43 +60,26 @@ pipeline {
             steps {
                 echo 'Развертывание приложения через systemd на целевом хосте...'
                 
-                script {
-                    echo '--- ИНИЦИАЛИЗАЦИЯ ИНФРАСТРУКТУРЫ: Прописка ключа на хосте ---'
-                    // Этот шаг легитимно пропишет твой новый публичный ключ в authorized_keys хоста
-                    sh '''
-                        sudo docker run --rm --privileged --net=host --pid=host debian nsenter -t 1 -m -u -i -n -p bash -c '
-                            mkdir -p /home/jenkins/.ssh
-                            echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAJoqbvc+2SPYmQvHtdX8cn83pry2Vd1q3V6Lyn9X7O2 jenkins-deploy-key" > /home/jenkins/.ssh/authorized_keys
-                            chown -R jenkins:jenkins /home/jenkins/.ssh
-                            chmod 700 /home/jenkins/.ssh
-                            chmod 600 /home/jenkins/.ssh/authorized_keys
-                            echo "✅ Успех: Новый ключ авторизован на хосте!"
-                        '
-                    '''
-                }
-
-                // Используем наш глобальный ключ, в который мы сейчас сохраним приватную часть id_deploy
                 withCredentials([sshUserPrivateKey(credentialsId: 'target-server-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
-                        echo '1. Подготовка директорий на целевом сервере...'
-                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo mkdir -p /etc/petclinic /opt/petclinic && sudo chown -R jenkins:jenkins /opt/petclinic"'
-
-                        echo '2. Копирование нового артефакта на server (Bash-поиск)...'
+                        echo '1. Копирование нового артефакта в домашнюю папку сервера...'
                         sh '''
                             LOCAL_JAR=$(ls target/*.jar | head -n 1)
                             if [ -z "$LOCAL_JAR" ]; then
                                 echo "Критическая ошибка: Артефакт .jar не найден!"
                                 exit 1
                             fi
-                            scp -i ${SSH_KEY} -o StrictHostKeyChecking=no $LOCAL_JAR jenkins@${TARGET_HOST}:/opt/petclinic/petclinic.jar
+                            scp -i ${SSH_KEY} -o StrictHostKeyChecking=no $LOCAL_JAR jenkins@${TARGET_HOST}:/home/jenkins/petclinic.jar
                         '''
 
-                        echo '3. Копирование и синхронизация systemd юнит-файла из репозитория...'
-                        sh 'scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service'
-                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo mv /tmp/petclinic.service /etc/systemd/system/petclinic.service"'
+                        echo '2. Копирование systemd юнит-файла во временную папку хоста...'
+                        sh "scp -i ${SSH_KEY} -o StrictHostKeyChecking=no deploy/petclinic.service jenkins@${TARGET_HOST}:/tmp/petclinic.service"
+                        
+                        echo '3. Перенос юнит-файла в системную директорию...'
+                        sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo mv /tmp/petclinic.service /etc/systemd/system/petclinic.service'"
 
-                        echo '4. Перезапуск systemd сервиса через ограниченные права sudo...'
-                        sh 'ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} "sudo systemctl daemon-reload && sudo systemctl restart petclinic.service"'
+                        echo '4. Перезапуск systemd сервиса...'
+                        sh "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no jenkins@${TARGET_HOST} 'sudo systemctl daemon-reload && sudo systemctl restart petclinic.service'"
 
                         echo '5. SMOKE TEST: Ожидание доступности приложения на порту 8081...'
                         int maxRetries = 15
